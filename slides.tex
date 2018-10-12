@@ -15,8 +15,8 @@
 \usepackage{xspace}
 \newcommand{\themename}{\textbf{\textsc{metropolis}}\xspace}
 
-\title{Atomic Ints}
-\subtitle{Safe concurrent operations}
+\title{Atomics and visibility problem}
+\subtitle{Safe concurrent operations Integer operations}
 % \date{\today}
 \date{Wednesday, 24. October 2018}
 \author{Stefan Schindler @dns2utf8}
@@ -139,9 +139,10 @@ let watcher = spawn(|| {
 \begin{frame}[fragile]{Monitor data thread - 2}
 \begin{minted}{rust}
 // back in fn main() { ...
-    let history = watcher.join().expect("watcher failed");
-    println!("{:?}\nn transitions recorded: {}", history, history.len());
-    //_counter.join();
+  let history = watcher.join().expect("watcher failed");
+  println!("{:?}\nn transitions recorded: {}"
+            , history, history.len());
+  //_counter.join();
 }
 
 \end{minted}
@@ -157,10 +158,24 @@ Would release mode change that output?
 
       \begin{block}{Debug mode}
 \begin{minted}{rust}
-[ ... 
-    (88, 0), (93, 0), (98, 0), (4, 0), (10, 0), 
-    (15, 0), (20, 0), (26, 0), (31, 0), (36, 0), 
-    (41, 0), (46, 0), (53, 0), (58, 0), (63, 0) 
+[ ...
+    (88, 0), (93, 0), (98, 0), (4, 0), (10, 0),
+    (15, 0), (20, 0), (26, 0), (31, 0), (36, 0),
+    (41, 0), (46, 0), (53, 0), (58, 0), (63, 0)
+]
+n transitions recorded: 99769
+\end{minted}
+      \end{block}
+\end{frame}
+\begin{frame}[fragile]{Monitor data thread - 4}
+\metroset{block=fill}
+
+      \begin{block}{Debug mode}
+\begin{minted}{rust}
+[ ...
+    (88, 0), (93, 0), (98, 0), (4, 0), (10, 0),
+    (15, 0), (20, 0), (26, 0), (31, 0), (36, 0),
+    (41, 0), (46, 0), (53, 0), (58, 0), (63, 0)
 ]
 n transitions recorded: 99769
 \end{minted}
