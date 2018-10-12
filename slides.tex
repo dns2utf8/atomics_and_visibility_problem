@@ -1,0 +1,362 @@
+\documentclass[10pt]{beamer}
+
+\usetheme[progressbar=frametitle]{metropolis}
+\usepackage{appendixnumberbeamer}
+
+% Syntax highlighting
+\usepackage{minted}
+
+\usepackage{booktabs}
+\usepackage[scale=2]{ccicons}
+
+\usepackage{pgfplots}
+\usepgfplotslibrary{dateplot}
+
+\usepackage{xspace}
+\newcommand{\themename}{\textbf{\textsc{metropolis}}\xspace}
+
+\title{Atomic Ints}
+\subtitle{Safe concurrent operations}
+% \date{\today}
+\date{Wednesday, 24. October 2018}
+\author{Stefan Schindler @dns2utf8}
+\institute{\href{https://www.meetup.com/de-DE/Rust-Zurich/}{Rust Zürichsee Meetup} hosted by \href{https://coredump.ch}{coredump.ch}}
+\titlegraphic{\hfill\includegraphics[height=1.5cm]{rust-logo-blk.png}}
+
+\begin{document}
+
+\maketitle
+
+\begin{frame}{Table of contents}
+  \setbeamertemplate{section in toc}[sections numbered]
+  \tableofcontents[hideallsubsections]
+\end{frame}
+
+\section{Introduction}
+
+\begin{frame}[fragile]{Who I am?}
+
+My name is Stefan and I ...
+
+\begin{itemize}
+\item studied Computer Science at HSR
+\item started with Rust in 2016
+\item maintain crates: threadpool, wipe\_buddy, son\_grid\_engine, ... \href{https://crates.io/users/dns2utf8}{some more}
+\item organize \href{https://rustfest.eu}{RustFest.eu} next up in Rome November 24th to 27th
+\item talk about rust
+\item am looking for a new rusty job
+\end{itemize}
+
+\end{frame}
+\begin{frame}{What will we learn tonight?}
+  
+\begin{itemize}
+\item What is a Symbol?
+\item What is an Atomic Operation?
+\item What is the visibility problem?
+\item How to solve it?
+\end{itemize}
+\end{frame}
+
+\section{Integer Data}
+
+\begin{frame}[fragile]{Where is index?}
+
+\begin{minted}{rust}
+let data = vec![42, 42, 42, 42];
+
+let mut index = 0; // <-- what is the kind of index?
+let length = data.len();
+while index < length {
+    println!("{}: {}", index, data[index]);
+    index += 1
+}
+\end{minted}
+and \alert{where} will it be stored at runtime?
+\end{frame}
+
+\section{Watching a value from another thread}
+
+\begin{frame}{Scenario}
+    \begin{itemize}
+        \item Control thread allocates global memory for \texttt{threshold}
+        \item $Thread_W$ will wait for \texttt{threshold} to pass a certain value and then alert the user
+        \item $Thread_S$ is waiting over input from the world and updates \texttt{threshold}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Monitor data thread - 0}
+\begin{minted}{rust}
+use std::thread::{sleep, spawn};
+use std::time::Duration;
+#[allow(non_upper_case_globals)]
+static mut threshold: isize = 0;
+const MAX_TEST: usize = 100000;
+fn main() {
+  let _counter = spawn(|| {
+    loop {
+// note: mutable statics can be mutated by multiple 
+// threads: aliasing violations or data races will 
+// cause undefined behavior
+      unsafe {
+          threshold = (threshold + 1) % 100;
+          //println!("counter: {}", threshold);
+      }
+    }
+  });
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{Monitor data thread - 1}
+\begin{minted}{rust}
+let watcher = spawn(|| {
+    sleep(Duration::from_millis(500));
+    let mut history = Vec::with_capacity(MAX_TEST);
+    let mut last = unsafe { threshold };
+    let mut count = 0;
+    for _ in 0..MAX_TEST {
+        let threshold_local = unsafe { threshold };
+        if last == threshold_local {
+            count += 1;
+        } else {
+            history.push((last, count));
+            last = threshold_local;
+            count = 0;
+        }
+    }
+    history
+});
+
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{Monitor data thread - 2}
+\begin{minted}{rust}
+// back in fn main() { ...
+    let history = watcher.join().expect("watcher failed");
+    println!("{:?}\nn transitions recorded: {}", history, history.len());
+    //_counter.join();
+}
+
+\end{minted}
+What kind of out put would you \alert{expect}?
+
+Would release mode change that output?
+\end{frame}
+
+
+
+\begin{frame}[fragile]{Monitor data thread - 3}
+\metroset{block=fill}
+
+      \begin{block}{Debug mode}
+\begin{minted}{rust}
+[ ... 
+    (88, 0), (93, 0), (98, 0), (4, 0), (10, 0), 
+    (15, 0), (20, 0), (26, 0), (31, 0), (36, 0), 
+    (41, 0), (46, 0), (53, 0), (58, 0), (63, 0) 
+]
+n transitions recorded: 99769
+\end{minted}
+      \end{block}
+
+    \begin{block}{Release mode}
+\begin{minted}{rust}
+[]
+n transitions recorded: 0
+\end{minted}
+      \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Manipulate data in RAM - 0}
+What if we have a list of objects and we need the value furthest away from Zero?
+\begin{minted}{rust}
+fn absolute_max(result: &mut i64, list: &Vec<i64>) {
+    for i in list {
+        let abs = if i < 0 { -i } else { i };
+        if result < abs {
+            result = i;
+        }
+    }
+}
+\end{minted}
+Quick question: \emph{Where is the data?} and why does it \alert{not} compile?
+\end{frame}
+
+\begin{frame}[fragile]{Manipulate data in RAM - 1}
+Making it compile with rust reveals the problem:
+\begin{minted}{rust}
+fn absolute_max(result: &mut i64, list: &Vec<i64>) {
+    for i in list {
+        let i = *i;
+        let result_local = *result;
+        
+        let abs_i = if i < 0 { -i } else { i };
+        let abs_r = if result_local < 0 { -result_local } else { result_local };
+        if abs_r < abs_i {
+            *result = i;
+        }
+    }
+}
+\end{minted}
+Full source: \url{https://play.rust-lang.org/?gist=11b541f0b4165f1cc39472c15f494a00&version=stable&mode=debug&edition=2015}
+\end{frame}
+
+
+
+
+\begin{frame}{Tables}
+  \begin{table}
+    \caption{Largest cities in the world (source: Wikipedia)}
+    \begin{tabular}{lr}
+      \toprule
+      City & Population\\
+      \midrule
+      Mexico City & 20,116,842\\
+      Shanghai & 19,210,000\\
+      Peking & 15,796,450\\
+      Istanbul & 14,160,467\\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+\end{frame}
+\begin{frame}{Blocks}
+  Three different block environments are pre-defined and may be styled with an
+  optional background color.
+
+  \begin{columns}[T,onlytextwidth]
+    \column{0.5\textwidth}
+      \begin{block}{Default}
+        Block content AAA.
+      \end{block}
+
+      \begin{alertblock}{Alert}
+        Block content AAA.
+      \end{alertblock}
+
+      \begin{exampleblock}{Example}
+        Block content AAA.
+      \end{exampleblock}
+
+    \column{0.5\textwidth}
+
+      \metroset{block=fill}
+
+      \begin{block}{Default}
+        Block content.
+      \end{block}
+
+      \begin{alertblock}{Alert}
+        Block content.
+      \end{alertblock}
+
+      \begin{exampleblock}{Example}
+        Block content.
+      \end{exampleblock}
+
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Math}
+  \begin{equation*}
+    e = \lim_{n\to \infty} \left(1 + \frac{1}{n}\right)^n
+  \end{equation*}
+\end{frame}
+
+\begin{frame}{Line plots}
+  \begin{figure}
+    \begin{tikzpicture}
+      \begin{axis}[
+        mlineplot,
+        width=0.9\textwidth,
+        height=6cm,
+      ]
+
+        \addplot {sin(deg(x))};
+        \addplot+[samples=100] {sin(deg(2*x))};
+
+      \end{axis}
+    \end{tikzpicture}
+  \end{figure}
+\end{frame}
+\begin{frame}{Bar charts}
+  \begin{figure}
+    \begin{tikzpicture}
+      \begin{axis}[
+        mbarplot,
+        xlabel={Foo},
+        ylabel={Bar},
+        width=0.9\textwidth,
+        height=6cm,
+      ]
+
+      \addplot plot coordinates {(1, 20) (2, 25) (3, 22.4) (4, 12.4)};
+      \addplot plot coordinates {(1, 18) (2, 24) (3, 23.5) (4, 13.2)};
+      \addplot plot coordinates {(1, 10) (2, 19) (3, 25) (4, 15.2)};
+
+      \legend{lorem, ipsum, dolor}
+
+      \end{axis}
+    \end{tikzpicture}
+  \end{figure}
+\end{frame}
+
+
+{%
+\setbeamertemplate{frame footer}{My custom footer}
+\begin{frame}[fragile]{Frame footer}
+    \themename defines a custom beamer template to add a text to the footer. It can be set via
+    \begin{verbatim}\setbeamertemplate{frame footer}{My custom footer}\end{verbatim}
+\end{frame}
+}
+
+%\begin{frame}{References}
+%  Some references to showcase [allowframebreaks] \cite{knuth92,ConcreteMath,Simpson,Er01,greenwade93}
+%\end{frame}
+
+\section{Atomic Operations}
+
+\begin{frame}{Performance differences}
+    \cite{AMD64ArchVol1}
+\end{frame}
+
+\section{Conclusion}
+
+\begin{frame}{Summary}
+
+  Multi-Thread-Programms require atomic operations.
+  Using them with an abstraction allows us to keep the development speed up.
+
+  \begin{center}Slides: \url{https://gitlab.com/dns2utf8/rust_atomics}\end{center}
+
+  %\begin{center}\ccbysa\end{center}
+
+\end{frame}
+
+{\setbeamercolor{palette primary}{fg=black, bg=yellow}
+\begin{frame}[standout]
+  Questions?
+\end{frame}
+}
+
+\appendix
+
+\begin{frame}[fragile]{Backup slides}
+  Sometimes, it is useful to add slides at the end of your presentation to
+  refer to during audience questions.
+
+  The best way to do this is to include the \verb|appendixnumberbeamer|
+  package in your preamble and call \verb|\appendix| before your backup slides.
+
+  \themename will automatically turn off slide numbering and progress bars for
+  slides in the appendix.
+\end{frame}
+
+\begin{frame}[allowframebreaks]{References}
+
+  \bibliography{slides}
+  \bibliographystyle{abbrv}
+
+\end{frame}
+
+\end{document}
