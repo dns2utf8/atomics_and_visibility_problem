@@ -1,0 +1,10 @@
+_minted-slides/
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+
+*.pdf
