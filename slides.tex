@@ -148,7 +148,7 @@ let watcher = spawn(|| {
 \end{minted}
 What kind of out put would you \alert{expect}?
 
-Would release mode change that output?
+% Would release mode change that output?
 \end{frame}
 
 
@@ -156,7 +156,7 @@ Would release mode change that output?
 \begin{frame}[fragile]{Monitor data thread - 3}
 \metroset{block=fill}
 
-      \begin{block}{Debug mode}
+      \begin{alertblock}{Debug mode}
 \begin{minted}{rust}
 [ ...
     (88, 0), (93, 0), (98, 0), (4, 0), (10, 0),
@@ -166,6 +166,8 @@ Would release mode change that output?
 n transitions recorded: 99769
 \end{minted}
       \end{block}
+
+    Now we want more speed. What to do?
 \end{frame}
 \begin{frame}[fragile]{Monitor data thread - 4}
 \metroset{block=fill}
@@ -181,47 +183,33 @@ n transitions recorded: 99769
 \end{minted}
       \end{block}
 
-    \begin{block}{Release mode}
+    \begin{alertblock}{Release mode}
 \begin{minted}{rust}
 []
 n transitions recorded: 0
 \end{minted}
       \end{block}
+
+    What happend? Why did it stop working? Feel free to guess
 \end{frame}
 
-\begin{frame}[fragile]{Manipulate data in RAM - 0}
-What if we have a list of objects and we need the value furthest away from Zero?
+\begin{frame}[fragile]{Monitor data thread - 5}
+    A new counter function:
 \begin{minted}{rust}
-fn absolute_max(result: &mut i64, list: &Vec<i64>) {
-    for i in list {
-        let abs = if i < 0 { -i } else { i };
-        if result < abs {
-            result = i;
-        }
-    }
-}
+let _counter = spawn(|| {
+  let threshold_ptr = unsafe {
+                        &mut threshold as *mut isize };
+  loop {
+      unsafe {
+          write_volatile(
+            threshold_ptr,
+            (read_volatile(threshold_ptr) + 1) % 100);
+      }
+  }
+});
 \end{minted}
-Quick question: \emph{Where is the data?} and why does it \alert{not} compile?
 \end{frame}
 
-\begin{frame}[fragile]{Manipulate data in RAM - 1}
-Making it compile with rust reveals the problem:
-\begin{minted}{rust}
-fn absolute_max(result: &mut i64, list: &Vec<i64>) {
-    for i in list {
-        let i = *i;
-        let result_local = *result;
-        
-        let abs_i = if i < 0 { -i } else { i };
-        let abs_r = if result_local < 0 { -result_local } else { result_local };
-        if abs_r < abs_i {
-            *result = i;
-        }
-    }
-}
-\end{minted}
-Full source: \url{https://play.rust-lang.org/?gist=11b541f0b4165f1cc39472c15f494a00&version=stable&mode=debug&edition=2015}
-\end{frame}
 
 
 
@@ -362,15 +350,50 @@ Full source: \url{https://play.rust-lang.org/?gist=11b541f0b4165f1cc39472c15f494
 
 \appendix
 
-\begin{frame}[fragile]{Backup slides}
-  Sometimes, it is useful to add slides at the end of your presentation to
-  refer to during audience questions.
+%\begin{frame}[fragile]{Backup slides}
+%  Sometimes, it is useful to add slides at the end of your presentation to
+%  refer to during audience questions.
+%
+%  The best way to do this is to include the \verb|appendixnumberbeamer|
+%  package in your preamble and call \verb|\appendix| before your backup slides.
+%
+%  \themename will automatically turn off slide numbering and progress bars for
+%  slides in the appendix.
+%\end{frame}
 
-  The best way to do this is to include the \verb|appendixnumberbeamer|
-  package in your preamble and call \verb|\appendix| before your backup slides.
 
-  \themename will automatically turn off slide numbering and progress bars for
-  slides in the appendix.
+\begin{frame}[fragile]{Manipulate data in RAM - 0}
+What if we have a list of objects and we need the value furthest away from Zero?
+\begin{minted}{rust}
+fn absolute_max(result: &mut i64, list: &Vec<i64>) {
+    for i in list {
+        let abs = if i < 0 { -i } else { i };
+        if result < abs {
+            result = i;
+        }
+    }
+}
+\end{minted}
+Quick question: \emph{Where is the data?} and why does it \alert{not} compile?
+\end{frame}
+
+\begin{frame}[fragile]{Manipulate data in RAM - 1}
+Making it compile with rust reveals the problem:
+\begin{minted}{rust}
+fn absolute_max(result: &mut i64, list: &Vec<i64>) {
+    for i in list {
+        let i = *i;
+        let result_local = *result;
+
+        let abs_i = if i < 0 { -i } else { i };
+        let abs_r = if result_local < 0 { -result_local } else { result_local };
+        if abs_r < abs_i {
+            *result = i;
+        }
+    }
+}
+\end{minted}
+Full source: \url{https://play.rust-lang.org/?gist=11b541f0b4165f1cc39472c15f494a00&version=stable&mode=debug&edition=2015}
 \end{frame}
 
 \begin{frame}[allowframebreaks]{References}
