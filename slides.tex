@@ -311,13 +311,6 @@ let _counter = spawn(|| {
 \end{frame}
 
 
-{%
-\setbeamertemplate{frame footer}{My custom footer}
-\begin{frame}[fragile]{Frame footer}
-    \themename defines a custom beamer template to add a text to the footer. It can be set via
-    \begin{verbatim}\setbeamertemplate{frame footer}{My custom footer}\end{verbatim}
-\end{frame}
-}
 
 %\begin{frame}{References}
 %  Some references to showcase [allowframebreaks] \cite{knuth92,ConcreteMath,Simpson,Er01,greenwade93}
@@ -326,7 +319,11 @@ let _counter = spawn(|| {
 \section{Atomic Operations}
 
 \begin{frame}{Performance differences}
-    \cite{AMD64ArchVol1}
+    Old Intel performance for Atomic Interger Operation: 20 - 120 cycles
+
+    Old AMD performance for Atomic Integer Operation: 40  cycles
+
+    Most recent AMD architecture\cite{AMD64ArchVol1} online TODO...
 \end{frame}
 
 \section{Conclusion}
@@ -336,7 +333,7 @@ let _counter = spawn(|| {
   Multi-Thread-Programms require atomic operations.
   Using them with an abstraction allows us to keep the development speed up.
 
-  \begin{center}Slides: \url{https://gitlab.com/dns2utf8/rust_atomics}\end{center}
+  \begin{center}Slides: \href{https://github.com/dns2utf8/atomics_and_visibility_problem}{dns2utf8/atomics\_and\_visibility\_problem}\end{center}
 
   %\begin{center}\ccbysa\end{center}
 
