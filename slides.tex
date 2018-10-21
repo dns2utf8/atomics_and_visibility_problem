@@ -214,101 +214,101 @@ let _counter = spawn(|| {
 
 
 
-\begin{frame}{Tables}
-  \begin{table}
-    \caption{Largest cities in the world (source: Wikipedia)}
-    \begin{tabular}{lr}
-      \toprule
-      City & Population\\
-      \midrule
-      Mexico City & 20,116,842\\
-      Shanghai & 19,210,000\\
-      Peking & 15,796,450\\
-      Istanbul & 14,160,467\\
-      \bottomrule
-    \end{tabular}
-  \end{table}
-\end{frame}
-\begin{frame}{Blocks}
-  Three different block environments are pre-defined and may be styled with an
-  optional background color.
-
-  \begin{columns}[T,onlytextwidth]
-    \column{0.5\textwidth}
-      \begin{block}{Default}
-        Block content AAA.
-      \end{block}
-
-      \begin{alertblock}{Alert}
-        Block content AAA.
-      \end{alertblock}
-
-      \begin{exampleblock}{Example}
-        Block content AAA.
-      \end{exampleblock}
-
-    \column{0.5\textwidth}
-
-      \metroset{block=fill}
-
-      \begin{block}{Default}
-        Block content.
-      \end{block}
-
-      \begin{alertblock}{Alert}
-        Block content.
-      \end{alertblock}
-
-      \begin{exampleblock}{Example}
-        Block content.
-      \end{exampleblock}
-
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Math}
-  \begin{equation*}
-    e = \lim_{n\to \infty} \left(1 + \frac{1}{n}\right)^n
-  \end{equation*}
-\end{frame}
-
-\begin{frame}{Line plots}
-  \begin{figure}
-    \begin{tikzpicture}
-      \begin{axis}[
-        mlineplot,
-        width=0.9\textwidth,
-        height=6cm,
-      ]
-
-        \addplot {sin(deg(x))};
-        \addplot+[samples=100] {sin(deg(2*x))};
-
-      \end{axis}
-    \end{tikzpicture}
-  \end{figure}
-\end{frame}
-\begin{frame}{Bar charts}
-  \begin{figure}
-    \begin{tikzpicture}
-      \begin{axis}[
-        mbarplot,
-        xlabel={Foo},
-        ylabel={Bar},
-        width=0.9\textwidth,
-        height=6cm,
-      ]
-
-      \addplot plot coordinates {(1, 20) (2, 25) (3, 22.4) (4, 12.4)};
-      \addplot plot coordinates {(1, 18) (2, 24) (3, 23.5) (4, 13.2)};
-      \addplot plot coordinates {(1, 10) (2, 19) (3, 25) (4, 15.2)};
-
-      \legend{lorem, ipsum, dolor}
-
-      \end{axis}
-    \end{tikzpicture}
-  \end{figure}
-\end{frame}
+%\begin{frame}{Tables}
+%  \begin{table}
+%    \caption{Largest cities in the world (source: Wikipedia)}
+%    \begin{tabular}{lr}
+%      \toprule
+%      City & Population\\
+%      \midrule
+%      Mexico City & 20,116,842\\
+%      Shanghai & 19,210,000\\
+%      Peking & 15,796,450\\
+%      Istanbul & 14,160,467\\
+%      \bottomrule
+%    \end{tabular}
+%  \end{table}
+%\end{frame}
+%\begin{frame}{Blocks}
+%  Three different block environments are pre-defined and may be styled with an
+%  optional background color.
+%
+%  \begin{columns}[T,onlytextwidth]
+%    \column{0.5\textwidth}
+%      \begin{block}{Default}
+%        Block content AAA.
+%      \end{block}
+%
+%      \begin{alertblock}{Alert}
+%        Block content AAA.
+%      \end{alertblock}
+%
+%      \begin{exampleblock}{Example}
+%        Block content AAA.
+%      \end{exampleblock}
+%
+%    \column{0.5\textwidth}
+%
+%      \metroset{block=fill}
+%
+%      \begin{block}{Default}
+%        Block content.
+%      \end{block}
+%
+%      \begin{alertblock}{Alert}
+%        Block content.
+%      \end{alertblock}
+%
+%      \begin{exampleblock}{Example}
+%        Block content.
+%      \end{exampleblock}
+%
+%  \end{columns}
+%\end{frame}
+%
+%\begin{frame}{Math}
+%  \begin{equation*}
+%    e = \lim_{n\to \infty} \left(1 + \frac{1}{n}\right)^n
+%  \end{equation*}
+%\end{frame}
+%
+%\begin{frame}{Line plots}
+%  \begin{figure}
+%    \begin{tikzpicture}
+%      \begin{axis}[
+%        mlineplot,
+%        width=0.9\textwidth,
+%        height=6cm,
+%      ]
+%
+%        \addplot {sin(deg(x))};
+%        \addplot+[samples=100] {sin(deg(2*x))};
+%
+%      \end{axis}
+%    \end{tikzpicture}
+%  \end{figure}
+%\end{frame}
+%\begin{frame}{Bar charts}
+%  \begin{figure}
+%    \begin{tikzpicture}
+%      \begin{axis}[
+%        mbarplot,
+%        xlabel={Foo},
+%        ylabel={Bar},
+%        width=0.9\textwidth,
+%        height=6cm,
+%      ]
+%
+%      \addplot plot coordinates {(1, 20) (2, 25) (3, 22.4) (4, 12.4)};
+%      \addplot plot coordinates {(1, 18) (2, 24) (3, 23.5) (4, 13.2)};
+%      \addplot plot coordinates {(1, 10) (2, 19) (3, 25) (4, 15.2)};
+%
+%      \legend{lorem, ipsum, dolor}
+%
+%      \end{axis}
+%    \end{tikzpicture}
+%  \end{figure}
+%\end{frame}
 
 
 
@@ -317,6 +317,40 @@ let _counter = spawn(|| {
 %\end{frame}
 
 \section{Atomic Operations}
+
+\begin{frame}{Atomic Access}
+    \textsc{From page 117 section 7.3.2 \cite{AMD64ArchVol2}}
+
+    \alert{Cacheable, naturally-aligned single loads or stores} of up to a
+quadword \alert{are atomic on any processor model}, as are misaligned loads or stores of less than a quadword that are contained entirely within a naturally-aligned quadword.
+Misaligned load or store accesses typically incur a small latency penalty.
+Model-specific relaxations of this quadword atomicity boundary, with respect to this latency penalty, may be found in a given processor's Software Optimization Guide.
+Misaligned accesses can be subject to interleaved accesses from other processors or cache-coherent devices which can result in unintended behavior.
+
+Atomicity \alert{for misaligned} accesses can be achieved
+where necessary by using the \textbf{XCHG} instruction or any suitable \textbf{LOCK}-prefixed instruction.
+Note that misaligned locked accesses may incur a significant performance penalty on various processor models.
+\end{frame}
+
+\begin{frame}{The LOCK prefix \textbf{F0}}
+    \textsc{From page 112 section 3.5.1.3 \cite{AMD64ArchVol1}}
+
+    The LOCK prefix causes certain
+read-modify-write instructions that access memory to occur atomically.
+The mechanism for doing so is \alert{implementation-dependent} (for example, the mechanism
+may involve \alert{locking} of \alert{data-cache lines} that contain copies of
+the referenced memory operands, and/or \alert{bus signaling} or packet-messaging on the bus).
+The prefix is intended to give the processor exclusive use of shared memory
+operands in a multiprocessor system.
+
+The prefix can only be used with forms of the following instructions that write a memory operand:
+\textbf{ADC, ADD, AND, BTC, BTR, BTS, CMPXCHG, CMPXCHG8B, DEC, INC, NEG
+, NOT, OR, SBB, SUB, XADD, XCHG, and XOR.}
+An invalid-opcode exception occurs if
+\texttt{LOCK} is used with any other instruction.
+
+For further details on these prefixes, see “Lock Prefix” in Volume 3 \cite{AMD64ArchVol3}.
+\end{frame}
 
 \begin{frame}{Performance differences}
     Old Intel performance for Atomic Interger Operation: 20 - 120 cycles

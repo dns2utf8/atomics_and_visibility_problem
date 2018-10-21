@@ -1,5 +1,7 @@
 _minted-slides/
 *.aux
+*.bbl
+*.blg
 *.log
 *.nav
 *.out
