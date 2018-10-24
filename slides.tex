@@ -376,7 +376,7 @@ static GLOBAL_COUNTER: usize = 0;
 pub fn counter_race() {
     (0..N_PARTIES).map(|_i| {
         spawn(move || {
-  let counter_ptr = unsafe { &mut threshold as *mut isize };
+  let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
             for _ in 0..N_INCREMENTS {
                 unsafe {
   write_volatile(counter_ptr, read_volatile(counter_ptr) + 1);
@@ -386,7 +386,7 @@ pub fn counter_race() {
     })
     .collect::<Vec<_>>()    .into_iter()
     .for_each(|t| t.join().expect("counter thread failed"));
-let counter_ptr = unsafe { &mut threshold as *mut isize };
+let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
     println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS,
             unsafe { read_volatile(counter_ptr) });
 }
@@ -398,11 +398,14 @@ let counter_ptr = unsafe { &mut threshold as *mut isize };
 
       \begin{alertblock}{read\_volatile and write\_volatile}
 \begin{minted}{rust}
-expected: 400000, got: 18
+expected: 400000, got: 129861
 \end{minted}
       \end{alertblock}
 
     What to do?
+
+    What do we know about the result?
+    Do we have a lower band of what we can expect?
 \end{frame}
 
 
@@ -433,7 +436,7 @@ println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS,
 
       \begin{block}{read\_volatile and write\_volatile}
 \begin{minted}{rust}
-expected: 400000, got: 18
+expected: 400000, got: 129861
 \end{minted}
       \end{block}
 

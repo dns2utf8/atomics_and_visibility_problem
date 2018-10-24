@@ -131,7 +131,7 @@ pub fn volatile_int() -> Vec<(isize, usize)> {
 
 
 // -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
-const N_PARTIES: usize = 2;
+const N_PARTIES: usize = 4;
 const N_INCREMENTS: usize = 100000;
 
 static mut GLOBAL_COUNTER: usize = 0;
