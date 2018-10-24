@@ -1,4 +1,4 @@
-\documentclass[10pt]{beamer}
+\documentclass[10pt,aspectratio=169]{beamer}
 
 \usetheme[progressbar=frametitle]{metropolis}
 \usepackage{appendixnumberbeamer}
@@ -58,6 +58,7 @@ My name is Stefan and I ...
   
 \begin{itemize}
 \item What is a Symbol?
+\item What is a Register?
 \item What is an Atomic Operation?
 \item What is the visibility problem?
 \item How to solve it?
@@ -144,7 +145,6 @@ let watcher = spawn(|| {
             , history, history.len());
   //_counter.join();
 }
-
 \end{minted}
 What kind of out put would you \alert{expect}?
 
@@ -359,6 +359,93 @@ For further details on these prefixes, see “Lock Prefix” in Volume 3 \cite{A
 
     Most recent AMD architecture\cite{AMD64ArchVol1} online TODO...
 \end{frame}
+
+
+\begin{frame}[fragile]{The counter race - 0}
+Let s be clever and fast!
+\begin{minted}{rust}
+const N_PARTIES: usize = 4;
+const N_INCREMENTS: usize = 100000;
+
+static GLOBAL_COUNTER: usize = 0;
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{The counter race - 1}
+\begin{minted}{rust}
+pub fn counter_race() {
+    (0..N_PARTIES).map(|_i| {
+        spawn(move || {
+  let counter_ptr = unsafe { &mut threshold as *mut isize };
+            for _ in 0..N_INCREMENTS {
+                unsafe {
+  write_volatile(counter_ptr, read_volatile(counter_ptr) + 1);
+                }
+            }
+        })
+    })
+    .collect::<Vec<_>>()    .into_iter()
+    .for_each(|t| t.join().expect("counter thread failed"));
+let counter_ptr = unsafe { &mut threshold as *mut isize };
+    println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS,
+            unsafe { read_volatile(counter_ptr) });
+}
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{The counter race - 2}
+\metroset{block=fill}
+
+      \begin{alertblock}{read\_volatile and write\_volatile}
+\begin{minted}{rust}
+expected: 400000, got: 18
+\end{minted}
+      \end{alertblock}
+
+    What to do?
+\end{frame}
+
+
+\begin{frame}[fragile]{The counter race - 3}
+\begin{minted}{rust}
+static GLOBAL_ATOMIC_COUNTER: AtomicUsize = ATOMIC_USIZE_INIT;
+pub fn counter_race_atomic() {
+    (0..N_PARTIES).map(|_| {
+        spawn(|| {
+            for _ in 0..N_INCREMENTS {
+                GLOBAL_ATOMIC_COUNTER.fetch_add(1, Ordering::Relaxed);
+            }
+        })
+    })
+    .collect::<Vec<_>>()
+    .into_iter()
+    .for_each(|t| t.join().expect("counter thread failed"));
+
+println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS,
+        GLOBAL_ATOMIC_COUNTER.load(Ordering::SeqCst));
+}
+\end{minted}
+\end{frame}
+
+
+\begin{frame}[fragile]{The counter race - 4}
+\metroset{block=fill}
+
+      \begin{block}{read\_volatile and write\_volatile}
+\begin{minted}{rust}
+expected: 400000, got: 18
+\end{minted}
+      \end{block}
+
+      \begin{alertblock}{Atomic .fetch\_add and .load}
+\begin{minted}{rust}
+expected: 400000, got: 400000
+\end{minted}
+      \end{alertblock}
+
+    Hurray!
+\end{frame}
+
 
 \section{Conclusion}
 

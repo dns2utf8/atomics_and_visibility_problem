@@ -2,6 +2,7 @@ use std::thread::{sleep, spawn};
 use std::time::Duration;
 use std::ptr::{read_volatile, write_volatile};
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
 #[allow(non_upper_case_globals)]
 static mut threshold: isize = 0;
@@ -15,6 +16,11 @@ fn main() {
     pritty_print(history);
     let history = volatile_int();
     pritty_print(history);
+
+    println!("\n\n-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-\n\n");
+
+    counter_race();
+    counter_race_atomic();
 }
 
 fn pritty_print<T: Debug>(list: Vec<T>) {
@@ -122,3 +128,46 @@ pub fn volatile_int() -> Vec<(isize, usize)> {
 
     watcher.join().expect("watcher failed")
 }
+
+
+// -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
+const N_PARTIES: usize = 2;
+const N_INCREMENTS: usize = 100000;
+
+static mut GLOBAL_COUNTER: usize = 0;
+pub fn counter_race() {
+    (0..N_PARTIES).map(|_i| {
+        spawn(move || {
+            let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
+            for _ in 0..N_INCREMENTS {
+                unsafe {
+                    write_volatile(counter_ptr, read_volatile(counter_ptr) + 1);
+                }
+            }
+            //println!("{} done", _i);
+        })
+    })
+    .collect::<Vec<_>>()
+    .into_iter()
+    .for_each(|t| t.join().expect("counter thread failed"));
+
+    let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
+    println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS, unsafe { read_volatile(counter_ptr) });
+}
+
+static GLOBAL_ATOMIC_COUNTER: AtomicUsize = ATOMIC_USIZE_INIT;
+pub fn counter_race_atomic() {
+    (0..N_PARTIES).map(|_| {
+        spawn(|| {
+            for _ in 0..N_INCREMENTS {
+                GLOBAL_ATOMIC_COUNTER.fetch_add(1, Ordering::Relaxed);
+            }
+        })
+    })
+    .collect::<Vec<_>>()
+    .into_iter()
+    .for_each(|t| t.join().expect("counter thread failed"));
+
+    println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS, GLOBAL_ATOMIC_COUNTER.load(Ordering::SeqCst));
+}
+
