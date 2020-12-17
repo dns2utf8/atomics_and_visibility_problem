@@ -1,8 +1,10 @@
-use std::thread::{sleep, spawn};
-use std::time::Duration;
-use std::ptr::{read_volatile, write_volatile};
-use std::fmt::Debug;
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::{
+    fmt::Debug,
+    ptr::{read_volatile, write_volatile},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    thread::{sleep, spawn},
+    time::Duration,
+};
 
 #[allow(non_upper_case_globals)]
 static mut threshold: isize = 0;
@@ -11,6 +13,7 @@ const MAX_TEST: usize = 100000;
 const ELEMENTS_PER_ROW: usize = 6;
 const MAX_ROWS: usize = 4;
 
+#[inline(never)]
 fn main() {
     let history = native_int();
     pritty_print(history);
@@ -21,8 +24,14 @@ fn main() {
 
     counter_race();
     counter_race_atomic();
+
+    println!("\n\n-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-\n\n");
+
+    // called so `cargo asm` can find the function
+    index_example();
 }
 
+#[inline(never)]
 fn pritty_print<T: Debug>(list: Vec<T>) {
     const MAX: usize = ELEMENTS_PER_ROW * MAX_ROWS;
 
@@ -56,15 +65,30 @@ fn pritty_print<T: Debug>(list: Vec<T>) {
 }
 
 /// This does work with debug but not with release
+#[inline(never)]
 pub fn native_int() -> Vec<(isize, usize)> {
     println!("native_int");
-    let _counter = spawn(|| {
+    static KEEP_COUNTING: AtomicBool = AtomicBool::new(true);
+
+    let counter = spawn(|| {
+        let mut i = 0usize;
         loop {
             //sleep(Duration::from_millis(1));
-            // note: mutable statics can be mutated by multiple threads: aliasing violations or data races will cause undefined behavior
+            // note: mutable statics can be mutated by multiple threads:
+            // aliasing violations or data races will cause undefined behavior
             unsafe {
                 threshold = (threshold + 1) % 100;
                 //println!("counter: {}", threshold);
+            }
+
+            // Shutdown code
+            if i > 1024 * 1024 {
+                i = 0;
+                if KEEP_COUNTING.load(Ordering::Relaxed) == false {
+                    return;
+                }
+            } else {
+                i += 1;
             }
         }
     });
@@ -89,20 +113,36 @@ pub fn native_int() -> Vec<(isize, usize)> {
     });
 
     let history = watcher.join().expect("watcher failed");
-    //counter.join();
+    KEEP_COUNTING.store(false, Ordering::SeqCst);
+    counter.join().expect("native_int::counter thread failed");
     history
 }
 
+#[inline(never)]
 pub fn volatile_int() -> Vec<(isize, usize)> {
     println!("volatile_int");
-    let _counter = spawn(|| {
+    static KEEP_COUNTING: AtomicBool = AtomicBool::new(true);
+
+    let counter = spawn(|| {
         let threshold_ptr = unsafe { &mut threshold as *mut isize };
+        let mut i = 0usize;
+
         loop {
             //sleep(Duration::from_millis(1));
             // note: mutable statics can be mutated by multiple threads: aliasing violations or data races will cause undefined behavior
             unsafe {
                 write_volatile(threshold_ptr, (read_volatile(threshold_ptr) + 1) % 100);
                 //println!("counter: {}", threshold);
+            }
+
+            // Shutdown code
+            if i > 1024 * 1024 {
+                i = 0;
+                if KEEP_COUNTING.load(Ordering::Relaxed) == false {
+                    return;
+                }
+            } else {
+                i += 1;
             }
         }
     });
@@ -126,48 +166,73 @@ pub fn volatile_int() -> Vec<(isize, usize)> {
         history
     });
 
-    watcher.join().expect("watcher failed")
+    let history = watcher.join().expect("watcher failed");
+    KEEP_COUNTING.store(false, Ordering::SeqCst);
+    counter.join().expect("volatile_int::counter thread failed");
+    history
 }
-
 
 // -.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-
 const N_PARTIES: usize = 4;
 const N_INCREMENTS: usize = 100000;
 
 static mut GLOBAL_COUNTER: usize = 0;
+#[inline(never)]
 pub fn counter_race() {
-    (0..N_PARTIES).map(|_i| {
-        spawn(move || {
-            let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
-            for _ in 0..N_INCREMENTS {
-                unsafe {
-                    write_volatile(counter_ptr, read_volatile(counter_ptr) + 1);
+    (0..N_PARTIES)
+        .map(|_i| {
+            spawn(move || {
+                let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
+                for _ in 0..N_INCREMENTS {
+                    unsafe {
+                        write_volatile(counter_ptr, read_volatile(counter_ptr) + 1);
+                    }
                 }
-            }
-            //println!("{} done", _i);
+                //println!("{} done", _i);
+            })
         })
-    })
-    .collect::<Vec<_>>()
-    .into_iter()
-    .for_each(|t| t.join().expect("counter thread failed"));
+        .collect::<Vec<_>>()
+        .into_iter()
+        .for_each(|t| t.join().expect("counter thread failed"));
 
     let counter_ptr = unsafe { &mut GLOBAL_COUNTER as *mut usize };
-    println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS, unsafe { read_volatile(counter_ptr) });
+    println!(
+        "counter_race(usize)       expected: {}, got: {}",
+        N_PARTIES * N_INCREMENTS,
+        unsafe { read_volatile(counter_ptr) }
+    );
 }
 
-static GLOBAL_ATOMIC_COUNTER: AtomicUsize = ATOMIC_USIZE_INIT;
+static GLOBAL_ATOMIC_COUNTER: AtomicUsize = AtomicUsize::new(0);
+#[inline(never)]
 pub fn counter_race_atomic() {
-    (0..N_PARTIES).map(|_| {
-        spawn(|| {
-            for _ in 0..N_INCREMENTS {
-                GLOBAL_ATOMIC_COUNTER.fetch_add(1, Ordering::Relaxed);
-            }
+    (0..N_PARTIES)
+        .map(|_| {
+            spawn(|| {
+                for _ in 0..N_INCREMENTS {
+                    GLOBAL_ATOMIC_COUNTER.fetch_add(1, Ordering::Relaxed);
+                }
+            })
         })
-    })
-    .collect::<Vec<_>>()
-    .into_iter()
-    .for_each(|t| t.join().expect("counter thread failed"));
+        .collect::<Vec<_>>()
+        .into_iter()
+        .for_each(|t| t.join().expect("counter thread failed"));
 
-    println!("expected: {}, got: {}", N_PARTIES * N_INCREMENTS, GLOBAL_ATOMIC_COUNTER.load(Ordering::SeqCst));
+    println!(
+        "counter_race(AtomicUsize) expected: {}, got: {}",
+        N_PARTIES * N_INCREMENTS,
+        GLOBAL_ATOMIC_COUNTER.load(Ordering::SeqCst)
+    );
 }
 
+#[inline(never)]
+pub fn index_example() {
+    let data = vec![42, 42, 42, 42];
+
+    let mut index = 0; // <-- what is the kind of index?
+    let length = data.len();
+    while index < length {
+        println!("{}: {}", index, data[index]);
+        index += 1
+    }
+}
