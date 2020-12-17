@@ -465,6 +465,9 @@ struct Normal {
 struct NormalSized {
     a: AtomicUsize, ... }
 
+// 64 Byte <- size of cache line
+#[repr(align(64))]
+struct Align64<T>(T);
 #[repr(align(64))]
 struct CacheLineAware {
     a: Align64<AtomicUsize>,
