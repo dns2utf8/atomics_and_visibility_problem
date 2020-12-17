@@ -1,4 +1,4 @@
-pdf:
+pdf: slides.tex
 	xelatex -interaction=nonstopmode --shell-escape slides.tex || true
 	bibtex slides
 	xelatex -interaction=nonstopmode --shell-escape slides.tex

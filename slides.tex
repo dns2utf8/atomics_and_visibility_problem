@@ -15,12 +15,12 @@
 \usepackage{xspace}
 \newcommand{\themename}{\textbf{\textsc{metropolis}}\xspace}
 
-\title{Atomics and visibility problem}
+\title{Atomics, the visibility Problem and Cache Lines}
 \subtitle{Safe concurrent operations Integer operations}
 % \date{\today}
-\date{Wednesday, 24. October 2018}
+\date{Thursday, 17. November 2020}
 \author{Stefan Schindler @dns2utf8}
-\institute{\href{https://www.meetup.com/de-DE/Rust-Zurich/}{Rust Zürichsee Meetup} hosted by \href{https://coredump.ch}{coredump.ch}}
+\institute{hosted by \href{https://rust-linz.at/}{Rust Meetup Linz}}
 \titlegraphic{\hfill\includegraphics[height=1.5cm]{rust-logo-blk.png}}
 
 %gets rid of bottom navigation bars
@@ -45,12 +45,12 @@
 My name is Stefan and I ...
 
 \begin{itemize}
-\item studied Computer Science at HSR
-\item started with Rust in 2016
+\item study Computer Science at \href{https://jku.at}{JKU} (MSc)
+\item started with Rust in 2015
 \item maintain crates: threadpool, wipe\_buddy, son\_grid\_engine, ... \href{https://crates.io/users/dns2utf8}{some more}
-\item organize \href{https://rustfest.eu}{RustFest.eu} next up in Rome November 24th to 27th
-\item talk about rust
-\item am looking for a new rusty job
+\item organize \href{https://rustfest.eu}{RustFest.eu} - Replay 2020 at \href{https://watch.rustfest.global/}{Watch.RustFest.Global}
+\item talk about Rust
+\item am looking for rusty projects
 \end{itemize}
 
 \end{frame}
@@ -62,9 +62,35 @@ My name is Stefan and I ...
 \item What is an Atomic Operation?
 \item What is the visibility problem?
 \item How to solve it?
+\item What arc CPU Caches?
+\item What is a Cache Line?
 \end{itemize}
 \end{frame}
 
+\begin{frame}{Before we begin: Common tools}
+  
+\begin{itemize}
+\item \texttt{cargo run \alert{--release}} speedup your binary by 40x (or more)
+\item \texttt{cargo watch -x \alert{check} -x \alert{fmt} -x \alert{run}} \\
+      keep your code tidy
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Before we begin: Why?}
+  
+\begin{itemize}
+\item Programming should be easy
+\item Machines are powerfull and Python 3 is better to understand 
+\end{itemize}
+
+\begin{figure}
+    \includegraphics[height=5cm]{./lstopo.png}
+    \caption{lstopo of my Ryzen 3700U}
+\end{figure}
+\end{frame}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Integer Data}
 
 \begin{frame}[fragile]{Where is index?}
@@ -72,7 +98,7 @@ My name is Stefan and I ...
 \begin{minted}{rust}
 let data = vec![42, 42, 42, 42];
 
-let mut index = 0; // <-- what is the kind of index?
+let mut index = 0; // <-- what is the type of index?
 let length = data.len();
 while index < length {
     println!("{}: {}", index, data[index]);
@@ -82,29 +108,54 @@ while index < length {
 and \alert{where} will it be stored at runtime?
 \end{frame}
 
+
+\begin{frame}[fragile]{Where is index? Answers}
+
+\begin{minted}{rust}
+let data = vec![42, 42, 42, 42];
+
+let mut index = 0; // <-- what is the type of index?
+let length = data.len();
+while index < length {
+    println!("{}: {}", index, data[index]);
+    index += 1
+}
+\end{minted}
+%and \alert{where} will it be stored at runtime?
+
+\begin{itemize}
+    \item $index$ is \alert{$usize$}, propagates from $data[index]$
+    \item $index$ lives in \alert{$rsp$} and the loop gets unrolled completely by llvm
+\end{itemize}
+\end{frame}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Watching a value from another thread}
 
 \begin{frame}{Scenario}
     \begin{itemize}
         \item Control thread allocates global memory for \texttt{threshold}
-        \item $Thread_W$ will wait for \texttt{threshold} to pass a certain value and then alert the user
-        \item $Thread_S$ is waiting over input from the world and updates \texttt{threshold}
+        \item $Thread_{Watcher}$ will wait for \texttt{threshold} to change value, then collect samples on how long it took
+            and finally report to the user
+        \item $Thread_{Counter}$ is waiting over input from the world and updates \texttt{threshold}, 
+                in our case simply update everytime
     \end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]{Monitor data thread - 0}
+\begin{frame}[fragile]{Monitor data from another thread - 0}
 \begin{minted}{rust}
-use std::thread::{sleep, spawn};
-use std::time::Duration;
+use std::{ thread::{sleep, spawn}, time::Duration };
 #[allow(non_upper_case_globals)]
 static mut threshold: isize = 0;
 const MAX_TEST: usize = 100000;
 fn main() {
-  let _counter = spawn(|| {
+  let counter = spawn(|| {
     loop {
-// note: mutable statics can be mutated by multiple 
-// threads: aliasing violations or data races will 
-// cause undefined behavior
+      // note: mutable statics can be mutated by multiple 
+      // threads: aliasing violations or data races will 
+      // cause undefined behavior
       unsafe {
           threshold = (threshold + 1) % 100;
           //println!("counter: {}", threshold);
@@ -114,7 +165,7 @@ fn main() {
 \end{minted}
 \end{frame}
 
-\begin{frame}[fragile]{Monitor data thread - 1}
+\begin{frame}[fragile]{Monitor data from another thread - 1}
 \begin{minted}{rust}
 let watcher = spawn(|| {
     sleep(Duration::from_millis(500));
@@ -127,33 +178,31 @@ let watcher = spawn(|| {
             count += 1;
         } else {
             history.push((last, count));
-            last = threshold_local;
-            count = 0;
+            last = threshold_local;          count = 0;
         }
     }
     history
 });
-
 \end{minted}
 \end{frame}
 
-\begin{frame}[fragile]{Monitor data thread - 2}
+\begin{frame}[fragile]{Monitor data from another thread - 2}
 \begin{minted}{rust}
 // back in fn main() { ...
   let history = watcher.join().expect("watcher failed");
   println!("{:?}\nn transitions recorded: {}"
             , history, history.len());
-  //_counter.join();
+  // counter.join(); needs some more infrastructure, see full code example
 }
 \end{minted}
-What kind of out put would you \alert{expect}?
+What kind of output would you \alert{expect}?
 
 % Would release mode change that output?
 \end{frame}
 
 
 
-\begin{frame}[fragile]{Monitor data thread - 3}
+\begin{frame}[fragile]{Monitor data from another thread - 3}
 \metroset{block=fill}
 
       \begin{alertblock}{Debug mode}
@@ -169,7 +218,7 @@ n transitions recorded: 99769
 
     Now we want more speed. What to do?
 \end{frame}
-\begin{frame}[fragile]{Monitor data thread - 4}
+\begin{frame}[fragile]{Monitor data from another thread - 4}
 \metroset{block=fill}
 
       \begin{block}{Debug mode}
@@ -214,108 +263,7 @@ let _counter = spawn(|| {
 
 
 
-%\begin{frame}{Tables}
-%  \begin{table}
-%    \caption{Largest cities in the world (source: Wikipedia)}
-%    \begin{tabular}{lr}
-%      \toprule
-%      City & Population\\
-%      \midrule
-%      Mexico City & 20,116,842\\
-%      Shanghai & 19,210,000\\
-%      Peking & 15,796,450\\
-%      Istanbul & 14,160,467\\
-%      \bottomrule
-%    \end{tabular}
-%  \end{table}
-%\end{frame}
-%\begin{frame}{Blocks}
-%  Three different block environments are pre-defined and may be styled with an
-%  optional background color.
-%
-%  \begin{columns}[T,onlytextwidth]
-%    \column{0.5\textwidth}
-%      \begin{block}{Default}
-%        Block content AAA.
-%      \end{block}
-%
-%      \begin{alertblock}{Alert}
-%        Block content AAA.
-%      \end{alertblock}
-%
-%      \begin{exampleblock}{Example}
-%        Block content AAA.
-%      \end{exampleblock}
-%
-%    \column{0.5\textwidth}
-%
-%      \metroset{block=fill}
-%
-%      \begin{block}{Default}
-%        Block content.
-%      \end{block}
-%
-%      \begin{alertblock}{Alert}
-%        Block content.
-%      \end{alertblock}
-%
-%      \begin{exampleblock}{Example}
-%        Block content.
-%      \end{exampleblock}
-%
-%  \end{columns}
-%\end{frame}
-%
-%\begin{frame}{Math}
-%  \begin{equation*}
-%    e = \lim_{n\to \infty} \left(1 + \frac{1}{n}\right)^n
-%  \end{equation*}
-%\end{frame}
-%
-%\begin{frame}{Line plots}
-%  \begin{figure}
-%    \begin{tikzpicture}
-%      \begin{axis}[
-%        mlineplot,
-%        width=0.9\textwidth,
-%        height=6cm,
-%      ]
-%
-%        \addplot {sin(deg(x))};
-%        \addplot+[samples=100] {sin(deg(2*x))};
-%
-%      \end{axis}
-%    \end{tikzpicture}
-%  \end{figure}
-%\end{frame}
-%\begin{frame}{Bar charts}
-%  \begin{figure}
-%    \begin{tikzpicture}
-%      \begin{axis}[
-%        mbarplot,
-%        xlabel={Foo},
-%        ylabel={Bar},
-%        width=0.9\textwidth,
-%        height=6cm,
-%      ]
-%
-%      \addplot plot coordinates {(1, 20) (2, 25) (3, 22.4) (4, 12.4)};
-%      \addplot plot coordinates {(1, 18) (2, 24) (3, 23.5) (4, 13.2)};
-%      \addplot plot coordinates {(1, 10) (2, 19) (3, 25) (4, 15.2)};
-%
-%      \legend{lorem, ipsum, dolor}
-%
-%      \end{axis}
-%    \end{tikzpicture}
-%  \end{figure}
-%\end{frame}
-
-
-
-%\begin{frame}{References}
-%  Some references to showcase [allowframebreaks] \cite{knuth92,ConcreteMath,Simpson,Er01,greenwade93}
-%\end{frame}
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Atomic Operations}
 
 \begin{frame}{Atomic Access}
@@ -450,12 +398,147 @@ expected: 400000, got: 400000
 \end{frame}
 
 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Cache Lines}
+
+\begin{frame}{What are Cache Lines?}
+%\begin{itemize}
+    %\item 
+    The smalest unit the \alert{L1 Cache} can manage
+%\end{itemize}
+
+\begin{figure}
+    \includegraphics[height=6cm]{./lstopo.png}
+    \caption{lstopo of my Ryzen 3700U}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}{What are Cache Lines?}
+
+\begin{figure}
+    \includegraphics[height=6cm]{./cpu_core_architecture_diagram.png}
+    \caption{Architecture diagram of one CPU core (by AMD)}
+\end{figure}
+\end{frame}
+
+
+\begin{frame}{How can we measure this?}
+
+    Consider this Scenario:
+    \begin{itemize}
+        \item We have one $struct$ for performance accounting
+        \item Multiple Threads are updating these Number constantly
+        \item Does the measurement impact the performance?
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{What is the setup?}
+The work function:
+\begin{minted}{rust}
+let atom: T = Atom::new();
+let mut ax = vec![];
+for i in 0..n_threads {
+    let r = unsafe { transmute::<&AtomicUsize, &'static AtomicUsize>(atom.get_ref(i)) };
+    ax.push(r);
+    pool.execute(move || {
+        for i in 0..1_000_000 {
+            //black_box(r.store(i, Ordering::Relaxed));
+            black_box(r.store(i, Ordering::SeqCst));
+        }
+    });
+}
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{Our test structs}
+
+$structs$ with 8 fields named \texttt{a..=h}:
+
+\begin{minted}{rust}
+struct Normal {
+    a: AtomicUsize, ... }
+
+#[repr(align(64))]
+struct NormalSized {
+    a: AtomicUsize, ... }
+
+#[repr(align(64))]
+struct CacheLineAware {
+    a: Align64<AtomicUsize>,
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{How much difference is it really?}
+\begin{minted}{rust}
+    test normal1           ... bench:   8,054,593 ns/iter (+/- 760,681)
+    test normal2           ... bench:  25,851,504 ns/iter (+/- 11,977,191)
+    test normal3           ... bench:  39,374,562 ns/iter (+/- 7,768,291)
+    test normal4           ... bench:  52,922,351 ns/iter (+/- 5,768,404)
+    test normal5           ... bench:  66,514,126 ns/iter (+/- 5,448,601)
+    test normal6           ... bench:  84,661,691 ns/iter (+/- 9,735,157)
+    test normal7           ... bench:  99,196,025 ns/iter (+/- 6,974,525)
+    test normal8           ... bench: 113,394,155 ns/iter (+/- 6,017,789)
+\end{minted}
+\end{frame}
+
+
+\begin{frame}[fragile]{How much difference is it really?}
+\begin{minted}{rust}
+    test normal_sized1     ... bench:   8,702,710 ns/iter (+/- 2,785,852)
+    test normal_sized2     ... bench:  25,069,811 ns/iter (+/- 11,624,638)
+    test normal_sized3     ... bench:  39,223,126 ns/iter (+/- 12,385,578)
+    test normal_sized4     ... bench:  52,666,643 ns/iter (+/- 12,402,881)
+    test normal_sized5     ... bench:  68,778,176 ns/iter (+/- 10,210,781)
+    test normal_sized6     ... bench:  84,908,780 ns/iter (+/- 8,879,962)
+    test normal_sized7     ... bench:  99,151,931 ns/iter (+/- 7,542,983)
+    test normal_sized8     ... bench: 113,209,912 ns/iter (+/- 14,485,064)
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{How much difference is it really?}
+\begin{minted}{rust}
+    test cache_line_aware1 ... bench:   8,706,154 ns/iter (+/- 1,502,185)
+    test cache_line_aware2 ... bench:   9,487,069 ns/iter (+/- 1,498,863)
+    test cache_line_aware3 ... bench:   9,773,357 ns/iter (+/- 4,312,256)
+    test cache_line_aware4 ... bench:   9,582,228 ns/iter (+/- 1,264,350)
+    test cache_line_aware5 ... bench:  10,096,429 ns/iter (+/- 8,984,253)
+    test cache_line_aware6 ... bench:  10,605,775 ns/iter (+/- 9,619,742)
+    test cache_line_aware7 ... bench:  10,674,727 ns/iter (+/- 7,516,734)
+    test cache_line_aware8 ... bench:  14,478,468 ns/iter (+/- 13,228,905)
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{How much difference is it really?}
+\begin{minted}{rust}
+    test normal8           ... bench: 113,394,155 ns/iter (+/- 6,017,789)
+    test normal_sized8     ... bench: 113,209,912 ns/iter (+/- 14,485,064)
+    test cache_line_aware8 ... bench:  14,478,468 ns/iter (+/- 13,228,905)
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{How much can we improove with \alert{\texttt{Ordering::Relaxed}}?}
+\begin{minted}{rust}
+    test normal8           ... bench:   9,473,450 ns/iter (+/- 3,548,383)
+    test normal_sized8     ... bench:  12,143,945 ns/iter (+/- 3,574,302)
+    test cache_line_aware8 ... bench:   1,712,897 ns/iter (+/- 1,513,449)
+\end{minted}
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Conclusion}
 
 \begin{frame}{Summary}
 
   Multi-Thread-Programms require atomic operations.
-  Using them with an abstraction allows us to keep the development speed up.
+  Using them with an abstraction allows us
+  \begin{enumerate}
+      \item to keep the development speed up
+      \item focus on other problems that managing threads
+      \item Hardware details do not have to fit in your mind at the same time
+  \end{enumerate} 
 
   \begin{center}Slides: \href{https://github.com/dns2utf8/atomics_and_visibility_problem}{dns2utf8/atomics\_and\_visibility\_problem}\end{center}
 
